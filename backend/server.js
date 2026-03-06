@@ -162,8 +162,8 @@ function setupDemoRoutes() {
                 deviceFingerprint: req.body.deviceFingerprint || 'demo',
                 signature: crypto.randomBytes(64).toString('hex'),
                 publicKey: 'DEMO_RSA_PUBLIC_KEY',
-                verificationUrl: `http://localhost:3000/certificate/${certId}`,
-                qrCodeData: `http://localhost:3000/certificate/${certId}`,
+                verificationUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/certificate/${certId}`,
+                qrCodeData: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/certificate/${certId}`,
                 chainOfCustody: [{ event: 'recording_created', timestamp: now, actor: req.user.id }],
             };
             const rec = {
