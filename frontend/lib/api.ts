@@ -53,6 +53,7 @@ export const recordingsAPI = {
     list: (page = 1, limit = 20) => api.get('/recordings', { params: { page, limit } }),
     get: (id: string) => api.get(`/recordings/${id}`),
     delete: (id: string) => api.delete(`/recordings/${id}`),
+    download: (id: string) => api.get(`/recordings/${id}/download`, { responseType: 'blob' }),
 };
 
 // Certificates API
@@ -69,4 +70,11 @@ export const verificationAPI = {
     verify: (formData: FormData) =>
         api.post('/verify', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
     getLogs: (certId: string) => api.get(`/verify/logs/${certId}`),
+};
+
+// Audit API
+export const auditAPI = {
+    getChain: () => api.get('/audit/chain'),
+    verifyChain: () => api.get('/audit/chain/verify'),
+    getCertificateAudit: (certId: string) => api.get(`/audit/certificate/${certId}`),
 };

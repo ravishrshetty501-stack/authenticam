@@ -21,28 +21,57 @@ router.get('/:certId', optionalAuth, async (req, res) => {
     }
 });
 
-// GET /api/certificates/:certId/download - Download as JSON
+// GET /api/certificates/:certId/download - Download as JSON (v2.0 schema)
 router.get('/:certId/download', optionalAuth, async (req, res) => {
     try {
         const certificate = await Certificate.findOne({ certificateId: req.params.certId })
             .populate('userId', 'username email');
         if (!certificate) return res.status(404).json({ error: 'Certificate not found' });
+
+        const { ALGORITHM_VERSIONS } = require('../utils/certificate');
+
         const certData = {
             authenticam_certificate: {
-                version: '1.0',
+                // Identity
                 certificateId: certificate.certificateId,
-                issuedAt: certificate.timestamp,
+                version: certificate.algorithmVersions?.certificateVersion || '2.0',
+                issuedAt: certificate.timestampProof?.iso || certificate.timestamp?.toISOString(),
                 issuedBy: certificate.userId?.username || 'unknown',
-                fileHash: certificate.fileHash,
+                issuerEmail: certificate.userId?.email || null,
+                userId: certificate.userId?._id?.toString(),
+
+                // Media
                 fileName: certificate.fileName,
                 fileSize: certificate.fileSize,
                 mimeType: certificate.mimeType,
-                deviceFingerprint: certificate.deviceFingerprint,
-                signature: certificate.signature,
+                duration: certificate.duration || 0,
+                recordingId: certificate.recordingId?.toString() || null,
+
+                // Cryptographic proofs
+                fileHash: certificate.fileHash,
+                merkleRoot: certificate.merkleRoot || null,
+                merkleLeafCount: certificate.merkleLeafCount || 0,
+                watermarkHash: certificate.watermarkHash || null,
+                digitalSignature: certificate.digitalSignature || certificate.signature,
+                signature: certificate.signature, // backwards compat
                 publicKey: certificate.publicKey,
+
+                // Device
+                deviceFingerprint: certificate.deviceFingerprint,
+                fingerprintHash: certificate.fingerprintHash || null,
+
+                // Timestamp
+                timestampProof: certificate.timestampProof || {
+                    iso: certificate.timestamp?.toISOString(),
+                    source: 'system',
+                    reliable: false,
+                },
+
+                // Metadata
+                geoLocation: certificate.geoLocation || null,
                 verificationUrl: certificate.verificationUrl,
                 chainOfCustody: certificate.chainOfCustody,
-                metadata: certificate.metadata,
+                algorithmVersions: certificate.algorithmVersions || ALGORITHM_VERSIONS,
             },
         };
         res.setHeader('Content-Type', 'application/json');

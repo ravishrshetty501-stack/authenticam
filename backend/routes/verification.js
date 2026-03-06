@@ -5,9 +5,9 @@ const Certificate = require('../models/Certificate');
 const VerificationLog = require('../models/VerificationLog');
 const { optionalAuth } = require('../middleware/auth');
 const { verifyUpload } = require('../middleware/upload');
-const { computeFileHash, verifySignature } = require('../utils/crypto');
+const { verifyRecording } = require('../utils/verifier');
 
-// POST /api/verify - Upload media + certificate JSON, compare hashes
+// POST /api/verify — Full 5-check authenticity verification
 router.post('/', optionalAuth, verifyUpload.single('media'), async (req, res) => {
     try {
         const { certificateJson } = req.body;
@@ -17,6 +17,8 @@ router.post('/', optionalAuth, verifyUpload.single('media'), async (req, res) =>
         if (!certificateJson) {
             return res.status(400).json({ error: 'Certificate JSON required' });
         }
+
+        // Parse certificate
         let certData;
         try {
             const parsed = JSON.parse(certificateJson);
@@ -24,55 +26,50 @@ router.post('/', optionalAuth, verifyUpload.single('media'), async (req, res) =>
         } catch {
             return res.status(400).json({ error: 'Invalid certificate JSON format' });
         }
-        // Compute hash of uploaded file
-        const uploadedHash = await computeFileHash(req.file.path);
+
+        // Read uploaded file into buffer
+        const fileBuffer = fs.readFileSync(req.file.path);
+
         // Clean up temp file
-        fs.unlinkSync(req.file.path);
-        const expectedHash = certData.fileHash;
+        try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+
+        // ── Run full 5-check verification ──────────────────────────
+        const report = await verifyRecording(fileBuffer, certData);
+
+        // Map overall → legacy result field for backwards compat
+        const legacyResult = {
+            VALID: 'authentic',
+            TAMPERED: 'tampered',
+            UNKNOWN_DEVICE: 'tampered',
+        }[report.overall] || 'error';
+
+        // Try to find in DB for chain-of-custody update
         const certId = certData.certificateId;
-        let result = 'error';
-        let tamperDetails = '';
         let dbCertificate = null;
-        // Try to find in DB
         if (certId) {
             dbCertificate = await Certificate.findOne({ certificateId: certId })
                 .populate('userId', 'username email')
                 .populate('recordingId', 'title');
         }
-        // Compare hashes
-        if (!expectedHash) {
-            result = 'invalid_certificate';
-            tamperDetails = 'No file hash found in certificate';
-        } else if (uploadedHash === expectedHash) {
-            // Also verify RSA signature if present
-            if (certData.signature) {
-                const sigValid = verifySignature(expectedHash, certData.signature);
-                if (sigValid) {
-                    result = 'authentic';
-                } else {
-                    result = 'tampered';
-                    tamperDetails = 'RSA signature verification failed — certificate may be forged';
-                }
-            } else {
-                result = 'authentic';
-            }
-        } else {
-            result = 'tampered';
-            tamperDetails = `Hash mismatch. Expected: ${expectedHash.substring(0, 16)}... Got: ${uploadedHash.substring(0, 16)}...`;
-        }
+
         // Log verification
-        const log = await VerificationLog.create({
-            certificateId: certId || null,
-            verifierId: req.user?._id || null,
-            verifierEmail: req.user?.email || 'anonymous',
-            uploadedHash,
-            expectedHash: expectedHash || null,
-            result,
-            tamperDetails,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-        });
-        // Add chain-of-custody event if cert found in DB
+        try {
+            await VerificationLog.create({
+                certificateId: certId || null,
+                verifierId: req.user?._id || null,
+                verifierEmail: req.user?.email || 'anonymous',
+                uploadedHash: report.checks.hash?.computedHash || '',
+                expectedHash: certData.fileHash || null,
+                result: legacyResult,
+                tamperDetails: report.summary,
+                ipAddress: req.ip,
+                userAgent: req.headers['user-agent'],
+            });
+        } catch (logErr) {
+            console.warn('[verify] Could not save verification log:', logErr.message);
+        }
+
+        // Add chain-of-custody event if cert exists in DB
         if (dbCertificate) {
             dbCertificate.chainOfCustody.push({
                 event: 'VERIFICATION_ATTEMPT',
@@ -80,29 +77,42 @@ router.post('/', optionalAuth, verifyUpload.single('media'), async (req, res) =>
                 actor: req.user?.username || 'anonymous',
                 actorId: req.user?._id || null,
                 ipAddress: req.ip,
-                details: { result, uploadedHash },
+                details: {
+                    overall: report.overall, checks: Object.fromEntries(
+                        Object.entries(report.checks).map(([k, v]) => [k, v.pass])
+                    )
+                },
             });
             await dbCertificate.save();
         }
+
         res.json({
-            result,
-            authentic: result === 'authentic',
-            uploadedHash,
-            expectedHash: expectedHash || null,
-            tamperDetails: tamperDetails || null,
+            // Full structured report (new API)
+            overall: report.overall,
+            checks: report.checks,
+            summary: report.summary,
+            verifiedAt: report.verifiedAt,
+
+            // Backwards-compatible fields
+            result: legacyResult,
+            authentic: report.overall === 'VALID',
+            uploadedHash: report.checks.hash?.computedHash || '',
+            expectedHash: certData.fileHash || null,
+            tamperDetails: report.summary,
             certificate: dbCertificate,
-            verificationId: log._id,
-            timestamp: new Date().toISOString(),
+            verificationId: null,
+            timestamp: report.verifiedAt,
         });
     } catch (err) {
-        console.error(err);
-        // Clean up file on error
-        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        console.error('[verify]', err);
+        if (req.file && fs.existsSync(req.file.path)) {
+            try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+        }
         res.status(500).json({ error: 'Verification failed', details: err.message });
     }
 });
 
-// GET /api/verify/logs - Get verification logs for a cert
+// GET /api/verify/logs/:certId — Get verification logs for a certificate
 router.get('/logs/:certId', async (req, res) => {
     try {
         const logs = await VerificationLog.find({ certificateId: req.params.certId })

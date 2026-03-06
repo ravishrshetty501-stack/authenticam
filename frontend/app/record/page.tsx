@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { recordingsAPI } from '@/lib/api';
-import { generateDeviceFingerprint } from '@/lib/fingerprint';
+import { generateDeviceFingerprint, generateDeviceFingerprintFull } from '@/lib/fingerprint';
 import toast from 'react-hot-toast';
 import { sha256 } from 'js-sha256';
 import { QRCodeSVG } from 'qrcode.react';
@@ -24,7 +24,19 @@ export default function RecordPage() {
     const [title, setTitle] = useState('');
     const [uploadProgress, setUploadProgress] = useState(0);
     const [certification, setCertification] = useState<{
-        certificate: { certificateId: string; fileHash: string; qrCodeData: string; verificationUrl: string; signature: string };
+        certificate: {
+            certificateId: string;
+            fileHash: string;
+            qrCodeData: string;
+            verificationUrl: string;
+            signature: string;
+            digitalSignature?: string;
+            merkleRoot?: string;
+            merkleLeafCount?: number;
+            watermarkHash?: string;
+            mimeType?: string;
+            timestampProof?: { iso: string; source: string; reliable: boolean };
+        };
         recording: { _id: string };
     } | null>(null);
 
@@ -58,7 +70,11 @@ export default function RecordPage() {
     // ─── auth guard ──────────────────────────────────────────────────────────
     useEffect(() => {
         if (!isAuthenticated) { router.push('/auth/login'); return; }
+        // Use quick sync fingerprint immediately, upgrade to full async version
         fingerprintRef.current = generateDeviceFingerprint();
+        generateDeviceFingerprintFull()
+            .then(({ raw }) => { if (raw !== 'server-side') fingerprintRef.current = raw; })
+            .catch(() => { /* keep sync version */ });
     }, [isAuthenticated, router]);
 
     // ─── re-attach stream every render ──────────────────────────────────────
@@ -292,22 +308,88 @@ export default function RecordPage() {
     };
 
     // ─── Download Certificate ────────────────────────────────────────────────
-    const downloadCert = () => {
+    const downloadCert = async () => {
         if (!certification) return;
-        const certData = {
-            authenticam_certificate: {
-                version: '1.0',
-                certificateId: certification.certificate.certificateId,
-                fileHash: certification.certificate.fileHash,
-                signature: certification.certificate.signature,
-                verificationUrl: certification.certificate.verificationUrl,
-            },
-        };
-        const blob = new Blob([JSON.stringify(certData, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = `certificate-${certification.certificate.certificateId}.json`;
-        a.click(); URL.revokeObjectURL(url);
+        try {
+            // Fetch the full, server-generated certificate JSON (with all crypto proofs)
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+            const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+            const res = await fetch(
+                `${API_URL}/certificates/${certification.certificate.certificateId}/download`,
+                { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+            );
+            if (!res.ok) throw new Error('Download failed');
+            const certData = await res.json();
+            const blob = new Blob([JSON.stringify(certData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `certificate-${certification.certificate.certificateId}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch {
+            // Fallback: build a partial cert from in-memory data (degraded but usable)
+            const certData = {
+                authenticam_certificate: {
+                    certificateId: certification.certificate.certificateId,
+                    fileHash: certification.certificate.fileHash,
+                    signature: certification.certificate.signature,
+                    digitalSignature: certification.certificate.digitalSignature,
+                    merkleRoot: certification.certificate.merkleRoot,
+                    merkleLeafCount: certification.certificate.merkleLeafCount,
+                    watermarkHash: certification.certificate.watermarkHash,
+                    timestampProof: certification.certificate.timestampProof,
+                    verificationUrl: certification.certificate.verificationUrl,
+                },
+            };
+            const blob = new Blob([JSON.stringify(certData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `certificate-${certification.certificate.certificateId}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    };
+
+    const downloadAuthenticMedia = async () => {
+        if (!certification) return;
+        const uploadId = certification.recording._id;
+        try {
+            console.log(`[downloadAuthenticMedia] Downloading recording: ${uploadId}`);
+            const res = await recordingsAPI.download(uploadId);
+
+            if (!res.data || res.status !== 200) {
+                throw new Error(`Server returned status ${res.status}`);
+            }
+
+            console.log('[downloadAuthenticMedia] Received blob, size:', res.data.size);
+
+            // Explicitly create blob with type from response if available
+            const blob = new Blob([res.data], { type: res.headers['content-type'] || 'video/mp4' });
+            const url = URL.createObjectURL(blob);
+
+            const ext = certification.certificate.mimeType?.includes('jpeg') ? 'jpg' :
+                certification.certificate.mimeType?.includes('mp4') ? 'mp4' : 'webm';
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `authentic-${certification.certificate.certificateId}.${ext}`;
+            document.body.appendChild(a);
+            a.click();
+
+            // Small delay before removal/revocation to ensure browser handles it
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+
+            toast.success('Authentic media downloaded!');
+        } catch (err: any) {
+            console.error('[downloadAuthenticMedia] Error:', err);
+            const msg = err.response?.data?.error || err.message || 'Download failed';
+            toast.error(`Authentic download failed: ${msg}`);
+        }
     };
 
     const handleNewCapture = () => {
@@ -434,7 +516,7 @@ export default function RecordPage() {
                                             {stage === 'preview' && (
                                                 <>
                                                     <button className="btn btn-ghost" onClick={handleDiscardRecording}>↩ Discard</button>
-                                                    <button className="btn btn-secondary" onClick={downloadVideo}>⬇ Download Video</button>
+                                                    <button className="btn btn-secondary" onClick={downloadVideo} title="Download local draft without watermark">⬇ Draft (No Protect)</button>
                                                     <button className="btn btn-primary btn-lg" onClick={handleSaveAndCertify}>🔐 Save & Certify</button>
                                                 </>
                                             )}
@@ -478,7 +560,7 @@ export default function RecordPage() {
                                             {stage === 'preview' && (
                                                 <>
                                                     <button className="btn btn-ghost" onClick={retakePhoto}>↩ Retake</button>
-                                                    <button className="btn btn-secondary" onClick={downloadPhoto}>⬇ Download Photo</button>
+                                                    <button className="btn btn-secondary" onClick={downloadPhoto} title="Download local snapshot without watermark">⬇ Draft (No Protect)</button>
                                                     <button className="btn btn-primary btn-lg" onClick={handleSaveAndCertify}>🔐 Save & Certify</button>
                                                 </>
                                             )}
@@ -647,22 +729,70 @@ export default function RecordPage() {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                     <div><label>Certificate ID</label><div className="hash-display">{certification?.certificate.certificateId}</div></div>
                                     <div><label>File Hash (SHA-256)</label><div className="hash-display">{certification?.certificate.fileHash}</div></div>
+
+                                    {/* Merkle root */}
+                                    {certification && certification.certificate.merkleRoot && (
+                                        <div>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                🌲 Merkle Root
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--success)', fontWeight: 400 }}>
+                                                    {certification.certificate.merkleLeafCount} chunks
+                                                </span>
+                                            </label>
+                                            <div className="hash-display">{certification.certificate.merkleRoot}</div>
+                                        </div>
+                                    )}
+
+                                    {/* Watermark hash */}
+                                    {certification && certification.certificate.watermarkHash && (
+                                        <div>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                💧 Watermark Hash
+                                                <span style={{ fontSize: '0.7rem', padding: '1px 6px', background: 'var(--success)', color: 'white', borderRadius: 'var(--radius-full)', fontWeight: 600 }}>EMBEDDED</span>
+                                            </label>
+                                            <div className="hash-display">{certification.certificate.watermarkHash}</div>
+                                        </div>
+                                    )}
+
+                                    {/* Timestamp proof */}
+                                    {certification && certification.certificate.timestampProof && (
+                                        <div>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                🕐 Timestamp Proof
+                                                <span style={{
+                                                    fontSize: '0.7rem', padding: '1px 6px', borderRadius: 'var(--radius-full)', fontWeight: 600,
+                                                    background: certification.certificate.timestampProof.source === 'ntp' ? 'var(--success)' : 'var(--warning)',
+                                                    color: 'white',
+                                                }}>
+                                                    {certification.certificate.timestampProof.source === 'ntp' ? 'NTP' : 'SYSTEM'}
+                                                </span>
+                                            </label>
+                                            <div className="hash-display">{certification.certificate.timestampProof.iso}</div>
+                                        </div>
+                                    )}
+
                                     <div>
                                         <label>Digital Signature (RSA)</label>
                                         <div className="hash-display" style={{ maxHeight: 60, overflow: 'hidden' }}>
-                                            {certification?.certificate.signature?.substring(0, 80)}…
+                                            {(certification?.certificate.digitalSignature || certification?.certificate.signature)?.substring(0, 80)}…
                                         </div>
                                     </div>
                                     <div><label>Verification URL</label><div className="hash-display">{certification?.certificate.verificationUrl}</div></div>
                                 </div>
 
                                 <div style={{ display: 'flex', gap: '10px', marginTop: '1.5rem', flexWrap: 'wrap' }}>
-                                    <button className="btn btn-primary" onClick={downloadCert}>📥 Download Certificate JSON</button>
-                                    <button className="btn btn-secondary" onClick={() => router.push('/dashboard')}>Dashboard</button>
+                                    <button className="btn btn-primary" onClick={downloadAuthenticMedia} style={{ background: 'var(--success)', borderColor: 'var(--success)' }}>
+                                        📥 Download Authentic {mode === 'photo' ? 'Photo' : 'Video'}
+                                    </button>
+                                    <button className="btn btn-secondary" onClick={downloadCert}>📥 Download Certificate JSON</button>
+                                    <button className="btn btn-ghost" style={{ border: '1.5px solid var(--border)' }} onClick={() => router.push('/dashboard')}>Dashboard</button>
                                     <button className="btn btn-ghost" onClick={handleNewCapture}>
                                         {mode === 'record' ? '🎥 New Recording' : mode === 'photo' ? '📸 New Photo' : '📤 New Upload'}
                                     </button>
                                 </div>
+                                <p style={{ marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                    Note: Use the <strong>Authentic {mode === 'photo' ? 'Photo' : 'Video'}</strong> for verification. It contains the embedded fragile watermark.
+                                </p>
                             </div>
 
                             {/* QR Code */}

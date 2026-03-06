@@ -59,7 +59,7 @@ router.post('/face-login', async (req, res) => {
             return res.status(400).json({ error: 'A valid 128-dimension face descriptor is required' });
         }
 
-        const THRESHOLD = 0.50; // Euclidean distance: 0 = identical, >0.6 = different person
+        const THRESHOLD = 0.55; // Euclidean distance: 0 = identical, >0.6 = different person
         let matchedUser = null;
 
         if (email) {
@@ -69,12 +69,18 @@ router.post('/face-login', async (req, res) => {
                 return res.status(404).json({ error: 'No account found with that email' });
             }
             if (!candidate.faceEnrolled || !candidate.faceDescriptor || candidate.faceDescriptor.length !== 128) {
+                console.warn(`[FaceAuth] User ${email} attempted face login but has no enrolled face.`);
                 return res.status(401).json({ error: 'No Face ID enrolled for this account. Register with Face ID first.' });
             }
             const dist = euclideanDistance(candidate.faceDescriptor, faceDescriptor);
-            console.log(`[FaceAuth] Distance for ${email}: ${dist.toFixed(4)} (threshold ${THRESHOLD})`);
+            const confidence = (1 - Math.min(dist, 1)) * 100;
+            console.log(`[FaceAuth] Distance for ${email}: ${dist.toFixed(4)} (threshold ${THRESHOLD}) - Confidence: ${confidence.toFixed(1)}%`);
+
             if (dist > THRESHOLD) {
-                return res.status(401).json({ error: `Face not recognized (confidence: ${((1 - Math.min(dist, 1)) * 100).toFixed(0)}%)` });
+                return res.status(401).json({
+                    error: `Face not recognized`,
+                    details: `Match confidence: ${confidence.toFixed(0)}% (Requires >${((1 - THRESHOLD) * 100).toFixed(0)}%)`
+                });
             }
             matchedUser = candidate;
         } else {

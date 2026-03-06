@@ -18,8 +18,8 @@ app.use(cors({
         const allowed = [
             'http://localhost:3000',
             'https://localhost:3000',
-            'http://172.20.199.120:3000',
-            'https://172.20.199.120:3000',
+            'http://172.18.28.186:3000',
+            'https://evil-chicken-retire.loca.lt',
             process.env.FRONTEND_URL,
         ].filter(Boolean);
         // Allow Vercel deployment URLs (*.vercel.app)
@@ -55,15 +55,24 @@ function setupRoutes() {
     const recordingRoutes = require('./routes/recordings');
     const certificateRoutes = require('./routes/certificates');
     const verificationRoutes = require('./routes/verification');
+    const auditRoutes = require('./routes/audit');
 
     app.use('/api/auth', authRoutes);
     app.use('/api/recordings', recordingRoutes);
     app.use('/api/certificates', certificateRoutes);
     app.use('/api/verify', verificationRoutes);
+    app.use('/api/audit', auditRoutes);
 }
 
 function setupDemoRoutes() {
     console.log('🎭 Running in DEMO mode (no MongoDB)');
+    const { buildMerkleTree } = require('./utils/merkle');
+    const { embedWatermark } = require('./utils/watermark');
+    const { getTrustedTimestamp } = require('./utils/timestamp');
+    const { ALGORITHM_VERSIONS } = require('./utils/certificate');
+    const { signHash, getPublicKey, generateKeys } = require('./utils/crypto');
+    const { anchorToBlockchain } = require('./utils/blockchain');
+    generateKeys();
 
     // In-memory store for demo
     const bcrypt = require('bcryptjs');
@@ -146,37 +155,89 @@ function setupDemoRoutes() {
     recRouter.post('/upload', authMiddleware, upload.single('media'), async (req, res) => {
         try {
             if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-            const fileHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
+            const fileBuffer = req.file.buffer;
             const certId = uuidv4();
+            const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/certificate/${certId}`;
+
+            // ─── Watermark ──────────────────────────────────────────
+            // Use certId as seed for consistency with recordings.js
+            const { watermarkedBuffer, watermarkHash } = embedWatermark(fileBuffer, certId);
+
+            // ─── Crypto Proofs (on watermarked buffer) ──────────────
+            const fileHash = crypto.createHash('sha256').update(watermarkedBuffer).digest('hex');
+            const merkleTree = buildMerkleTree(watermarkedBuffer);
+            const merkleRoot = merkleTree.root;
+            const merkleLeafCount = merkleTree.leaves.length; // This was originally after merkleTree, keep it here.
+
+            // RSA sign
+            const signature = signHash(fileHash);
+            const publicKey = getPublicKey();
+
+            // NTP timestamp
+            const timestampProof = await getTrustedTimestamp();
+            const now = new Date(timestampProof.iso);
+
             const recId = uuidv4();
-            const now = new Date();
+
             const cert = {
                 certificateId: certId,
+                version: ALGORITHM_VERSIONS.certificateVersion,
                 recordingId: recId,
                 userId: req.user.id,
+                issuedAt: timestampProof.iso,
+                issuedBy: req.user.email,
                 fileHash,
                 fileName: req.file.originalname,
                 fileSize: req.file.size,
                 mimeType: req.file.mimetype,
-                timestamp: now,
+                duration: parseFloat(req.body.duration) || 0,
+                merkleRoot,
+                merkleLeafCount,
+                watermarkHash,
+                signature: signature || crypto.randomBytes(64).toString('hex'),
+                digitalSignature: signature || crypto.randomBytes(64).toString('hex'),
+                publicKey: publicKey || 'DEMO_RSA_PUBLIC_KEY',
                 deviceFingerprint: req.body.deviceFingerprint || 'demo',
-                signature: crypto.randomBytes(64).toString('hex'),
-                publicKey: 'DEMO_RSA_PUBLIC_KEY',
-                verificationUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/certificate/${certId}`,
-                qrCodeData: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/certificate/${certId}`,
-                chainOfCustody: [{ event: 'recording_created', timestamp: now, actor: req.user.id }],
+                fingerprintHash: crypto.createHash('sha256').update(req.body.deviceFingerprint || 'demo').digest('hex'),
+                timestampProof,
+                timestamp: now,
+                algorithmVersions: ALGORITHM_VERSIONS,
+                verificationUrl,
+                qrCodeData: verificationUrl,
+                chainOfCustody: [{
+                    event: 'RECORDING_CREATED',
+                    timestamp: now,
+                    actor: req.user.email,
+                    details: { fileHash, merkleRoot, watermarkHash, merkleLeafCount, timestampSource: timestampProof.source },
+                }],
             };
             const rec = {
                 _id: recId, title: req.body.title || 'Untitled', fileHash,
                 fileSize: req.file.size, mimeType: req.file.mimetype,
                 duration: parseFloat(req.body.duration) || 0, status: 'certified',
                 createdAt: now, userId: req.user.id,
-                certificateId: { certificateId: certId, qrCodeData: cert.qrCodeData, verificationUrl: cert.verificationUrl },
+                certificateId: {
+                    certificateId: certId, qrCodeData: cert.qrCodeData, verificationUrl: cert.verificationUrl,
+                    merkleRoot, watermarkHash
+                },
             };
             demoCertificates.set(certId, cert);
-            demoRecordings.set(recId, rec);
+            demoRecordings.set(recId, { ...rec, watermarkedBuffer });
+
+            // Anchor to local blockchain ledger
+            try {
+                const block = anchorToBlockchain(fileHash, certId, req.user.id);
+                cert.blockchainAnchor = {
+                    blockIndex: block.blockIndex,
+                    blockHash: block.blockHash,
+                    timestamp: block.timestamp,
+                };
+            } catch (blockErr) {
+                console.warn('[demo/upload] Blockchain anchor failed:', blockErr.message);
+            }
+
             res.json({ recording: rec, certificate: cert });
-        } catch (e) { res.status(500).json({ error: e.message }); }
+        } catch (e) { console.error('[demo/upload]', e); res.status(500).json({ error: e.message }); }
     });
 
     recRouter.get('/', authMiddleware, (req, res) => {
@@ -187,6 +248,16 @@ function setupDemoRoutes() {
     recRouter.delete('/:id', authMiddleware, (req, res) => {
         demoRecordings.delete(req.params.id);
         res.json({ message: 'Deleted' });
+    });
+
+    recRouter.get('/:id/download', authMiddleware, (req, res) => {
+        const rec = demoRecordings.get(req.params.id);
+        if (!rec || !rec.watermarkedBuffer) return res.status(404).json({ error: 'File not found' });
+
+        const ext = rec.mimeType.includes('mp4') ? '.mp4' : rec.mimeType.includes('jpeg') ? '.jpg' : '.webm';
+        res.setHeader('Content-Type', rec.mimeType);
+        res.setHeader('Content-Disposition', `attachment; filename="authentic-${rec.title.replace(/[^a-z0-9]/gi, '_')}${ext}"`);
+        res.send(rec.watermarkedBuffer);
     });
 
     app.use('/api/recordings', recRouter);
@@ -207,29 +278,38 @@ function setupDemoRoutes() {
     });
     app.use('/api/certificates', certRouter);
 
-    // VERIFY
+    // VERIFY — Full 5-check verifier (demo mode)
+    const { verifyRecording } = require('./utils/verifier');
     const verRouter = express.Router();
-    verRouter.post('/', upload.single('media'), (req, res) => {
+    verRouter.post('/', upload.single('media'), async (req, res) => {
         try {
             if (!req.file) return res.status(400).json({ error: 'No media file' });
-            const uploadedHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
             let certData;
             try { certData = JSON.parse(req.body.certificateJson); } catch { return res.status(400).json({ error: 'Invalid certificate JSON' }); }
-            const expectedHash = certData.fileHash || certData.authenticam_certificate?.fileHash;
-            const authentic = uploadedHash === expectedHash;
+            const fileBuffer = req.file.buffer;
+            const report = await verifyRecording(fileBuffer, certData);
+            const legacyResult = { VALID: 'authentic', TAMPERED: 'tampered', UNKNOWN_DEVICE: 'tampered' }[report.overall] || 'error';
             res.json({
-                result: authentic ? 'authentic' : 'tampered',
-                authentic,
-                uploadedHash,
-                expectedHash: expectedHash || 'Not found',
-                tamperDetails: authentic ? null : 'File hash does not match the certificate',
+                overall: report.overall,
+                checks: report.checks,
+                summary: report.summary,
+                verifiedAt: report.verifiedAt,
+                result: legacyResult,
+                authentic: report.overall === 'VALID',
+                uploadedHash: report.checks.hash?.computedHash || '',
+                expectedHash: (certData.authenticam_certificate || certData).fileHash || null,
+                tamperDetails: report.summary,
                 certificate: certData,
                 verificationId: uuidv4(),
-                timestamp: new Date(),
+                timestamp: report.verifiedAt,
             });
-        } catch (e) { res.status(500).json({ error: e.message }); }
+        } catch (e) { console.error('[demo/verify]', e); res.status(500).json({ error: e.message }); }
     });
     app.use('/api/verify', verRouter);
+
+    // AUDIT — chain-of-custody and blockchain ledger
+    const auditRoutes = require('./routes/audit');
+    app.use('/api/audit', auditRoutes);
 }
 
 // Try MongoDB connection; fall back to demo mode

@@ -19,6 +19,19 @@ interface Certificate {
     publicKey: string;
     verificationUrl: string;
     qrCodeData: string;
+    merkleRoot?: string;
+    merkleLeafCount?: number;
+    watermarkHash?: string;
+    fingerprintHash?: string;
+    blockchainAnchor?: {
+        blockIndex: number;
+        blockHash: string;
+        timestamp: string;
+    };
+    timestampProof?: {
+        source: string;
+        reliable: boolean;
+    };
     chainOfCustody: Array<{ event: string; timestamp: string; actor: string; details?: Record<string, unknown> }>;
     userId?: { username: string; email: string };
     recordingId?: { title: string; mimeType: string };
@@ -115,10 +128,14 @@ export default function CertificatePage() {
                                     {[
                                         { label: 'Certificate ID', value: cert.certificateId, mono: true },
                                         { label: 'File Hash (SHA-256)', value: cert.fileHash, mono: true },
+                                        { label: 'Merkle Root', value: cert.merkleRoot || '—', mono: true },
+                                        { label: 'Watermark Hash', value: cert.watermarkHash || '—', mono: true },
+                                        { label: 'Fingerprint Hash', value: cert.fingerprintHash || '—', mono: true },
                                         { label: 'File Name', value: cert.fileName || '—' },
                                         { label: 'File Size', value: cert.fileSize ? ((cert.fileSize / 1024 / 1024).toFixed(2) + ' MB') : '—' },
                                         { label: 'MIME Type', value: cert.mimeType || '—' },
                                         { label: 'Timestamp', value: new Date(cert.timestamp).toLocaleString() },
+                                        { label: 'Time Source', value: cert.timestampProof?.source || 'System Clock' },
                                         { label: 'Issued By', value: cert.userId?.username || 'Unknown' },
                                         { label: 'Device Fingerprint', value: cert.deviceFingerprint, mono: true },
                                     ].map((row) => (
@@ -137,10 +154,31 @@ export default function CertificatePage() {
                             {/* Digital Signature */}
                             <div className="glass" style={{ padding: '1.5rem' }}>
                                 <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem' }}>✍️ Digital Signature (RSA-2048)</h3>
-                                <div className="hash-display" style={{ maxHeight: 80, overflow: 'auto', fontSize: '0.65rem' }}>
+                                <div className="hash-display" style={{ maxHeight: 80, overflow: 'auto', fontSize: '0.65rem', wordBreak: 'break-all' }}>
                                     {cert.signature}
                                 </div>
                             </div>
+
+                            {/* Blockchain Anchor */}
+                            {cert.blockchainAnchor && (
+                                <div className="glass" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, rgba(79,70,229,0.05) 0%, rgba(124,58,237,0.05) 100%)' }}>
+                                    <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem' }}>⛓️ Blockchain Anchor (Local Ledger)</h3>
+                                    <div style={{ display: 'grid', gap: '8px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                                            <span style={{ color: 'var(--text-muted)' }}>Block Index</span>
+                                            <span style={{ fontWeight: 700 }}>#{cert.blockchainAnchor.blockIndex}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>Block Hash</span>
+                                            <div className="hash-display" style={{ fontSize: '0.7rem' }}>{cert.blockchainAnchor.blockHash}</div>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                                            <span style={{ color: 'var(--text-muted)' }}>Anchored At</span>
+                                            <span>{new Date(cert.blockchainAnchor.timestamp).toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Chain of custody */}
                             <div className="glass" style={{ padding: '1.5rem' }}>

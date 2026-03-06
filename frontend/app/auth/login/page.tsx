@@ -121,9 +121,15 @@ export default function LoginPage() {
             toast.success('Face authentication successful!');
             router.push('/dashboard');
         } catch (err: unknown) {
-            const error = err as { response?: { data?: { error?: string } } };
+            const error = err as { response?: { data?: { error?: string, details?: string } } };
             const msg = error.response?.data?.error || 'Face not recognized';
-            toast.error(msg);
+            const details = error.response?.data?.details;
+
+            if (details) {
+                toast.error(`${msg}: ${details}`, { duration: 5000 });
+            } else {
+                toast.error(msg);
+            }
             setStatusMsg('');
         } finally {
             setFaceLoading(false);

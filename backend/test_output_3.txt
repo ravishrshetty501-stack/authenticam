@@ -1,0 +1,35 @@
+  console.log
+    ≡ƒöæ RSA keys already exist
+
+      at log (utils/crypto.js:14:17)
+
+  console.error
+    Error verifying signature: Encryption block is invalid.
+
+    [0m [90m 72 |[39m         [36mreturn[39m publicKey[33m.[39mverify(md[33m.[39mdigest()[33m.[39mbytes()[33m,[39m forge[33m.[39mutil[33m.[39mdecode64(signature))[33m;[39m
+     [90m 73 |[39m     } [36mcatch[39m (err) {
+    [31m[1m>[22m[39m[90m 74 |[39m         console[33m.[39merror([32m'Error verifying signature:'[39m[33m,[39m err[33m.[39mmessage)[33m;[39m
+     [90m    |[39m                 [31m[1m^[22m[39m
+     [90m 75 |[39m         [36mreturn[39m [36mfalse[39m[33m;[39m
+     [90m 76 |[39m     }
+     [90m 77 |[39m }[0m
+
+      at error (utils/crypto.js:74:17)
+      at verifySignature (utils/verifier.js:92:23)
+      at checkFn (utils/verifier.js:40:30)
+      at runCheck (utils/verifier.js:87:34)
+      at Object.<anonymous> (tests/verifier.test.js:78:24)
+
+PASS tests/verifier.test.js
+  Verifier Pipeline
+    ΓêÜ Full 6-check verify of authentic recording (28 ms)
+    ΓêÜ Detects TAMPERED when hash mismatches (25 ms)
+    ΓêÜ Detects TAMPERED when signature is invalid (32 ms)
+    ΓêÜ Detects UNKNOWN_DEVICE when watermark is stripped (re-encoded) (23 ms)
+    ΓêÜ Gracefully handles missing fingerprint (legacy) (25 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       5 passed, 5 total
+Snapshots:   0 total
+Time:        1.863 s
+Ran all test suites matching /tests\\verifier.test.js/i.

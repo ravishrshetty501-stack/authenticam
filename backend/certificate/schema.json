@@ -1,0 +1,215 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://authenticam.io/schemas/certificate/v2.0",
+    "title": "AuthentiCam Proof-of-Reality Certificate",
+    "description": "Cryptographically verifiable authenticity certificate for recorded media.",
+    "type": "object",
+    "required": [
+        "authenticam_certificate"
+    ],
+    "properties": {
+        "authenticam_certificate": {
+            "type": "object",
+            "required": [
+                "certificateId",
+                "version",
+                "issuedAt",
+                "fileHash",
+                "digitalSignature",
+                "merkleRoot",
+                "watermarkHash",
+                "timestampProof",
+                "algorithmVersions"
+            ],
+            "properties": {
+                "certificateId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Unique UUID v4 identifier for this certificate"
+                },
+                "version": {
+                    "type": "string",
+                    "description": "Certificate schema version",
+                    "example": "2.0"
+                },
+                "issuedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "ISO 8601 timestamp when certificate was issued"
+                },
+                "issuedBy": {
+                    "type": "string",
+                    "description": "Username of the recording author"
+                },
+                "userId": {
+                    "type": "string",
+                    "description": "System user ID of recording author"
+                },
+                "fileName": {
+                    "type": "string",
+                    "description": "Original filename of the recorded media"
+                },
+                "fileSize": {
+                    "type": "integer",
+                    "description": "File size in bytes"
+                },
+                "mimeType": {
+                    "type": "string",
+                    "description": "MIME type of the media file",
+                    "example": "video/webm"
+                },
+                "duration": {
+                    "type": "number",
+                    "description": "Recording duration in seconds"
+                },
+                "recordingId": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "description": "ID of the linked recording in the database"
+                },
+                "fileHash": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$",
+                    "description": "SHA-256 hex digest of the complete media file"
+                },
+                "merkleRoot": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$",
+                    "description": "Merkle root computed over 4096-byte file chunks using SHA-256"
+                },
+                "merkleLeafCount": {
+                    "type": "integer",
+                    "description": "Number of 4KB chunks (Merkle leaves) in the recording"
+                },
+                "watermarkHash": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$",
+                    "description": "SHA-256 of the spread-spectrum watermark trailer region"
+                },
+                "digitalSignature": {
+                    "type": "string",
+                    "description": "RSA-2048 PKCS#1v1.5 digital signature of fileHash, Base64-encoded"
+                },
+                "publicKey": {
+                    "type": "string",
+                    "description": "PEM-encoded RSA-2048 public key for signature verification"
+                },
+                "deviceFingerprint": {
+                    "type": "string",
+                    "description": "Raw browser device fingerprint string"
+                },
+                "fingerprintHash": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "description": "SHA-256 of enriched device fingerprint (UA + IP + canvas + WebGL)"
+                },
+                "timestampProof": {
+                    "type": "object",
+                    "required": [
+                        "iso",
+                        "source"
+                    ],
+                    "properties": {
+                        "iso": {
+                            "type": "string",
+                            "format": "date-time",
+                            "description": "ISO 8601 certified timestamp"
+                        },
+                        "unix": {
+                            "type": "integer",
+                            "description": "Unix epoch milliseconds"
+                        },
+                        "source": {
+                            "type": "string",
+                            "enum": [
+                                "ntp",
+                                "system"
+                            ],
+                            "description": "'ntp' = NTP-synchronized, 'system' = local fallback"
+                        },
+                        "ntpServer": {
+                            "type": "string",
+                            "description": "NTP server queried"
+                        },
+                        "ntpOffset": {
+                            "type": "number",
+                            "description": "Measured clock offset in milliseconds"
+                        },
+                        "roundtripMs": {
+                            "type": "number",
+                            "description": "NTP round-trip time in milliseconds"
+                        },
+                        "reliable": {
+                            "type": "boolean",
+                            "description": "True if NTP sync succeeded"
+                        }
+                    }
+                },
+                "geoLocation": {
+                    "type": [
+                        "object",
+                        "null"
+                    ],
+                    "description": "Optional geolocation at time of recording",
+                    "properties": {
+                        "lat": {
+                            "type": "number"
+                        },
+                        "lon": {
+                            "type": "number"
+                        },
+                        "accuracy": {
+                            "type": "number"
+                        }
+                    }
+                },
+                "verificationUrl": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL to online verification page for this certificate"
+                },
+                "algorithmVersions": {
+                    "type": "object",
+                    "description": "Manifest of cryptographic algorithm identifiers used in this certificate",
+                    "properties": {
+                        "hashAlgorithm": {
+                            "type": "string",
+                            "example": "SHA-256"
+                        },
+                        "signatureAlgorithm": {
+                            "type": "string",
+                            "example": "RSA-2048-PKCS1v15-SHA256"
+                        },
+                        "merkleHashAlgorithm": {
+                            "type": "string",
+                            "example": "SHA-256"
+                        },
+                        "merkleChunkSize": {
+                            "type": "string",
+                            "example": "4096 bytes"
+                        },
+                        "watermarkAlgorithm": {
+                            "type": "string"
+                        },
+                        "watermarkSize": {
+                            "type": "string"
+                        },
+                        "fingerprintAlgorithm": {
+                            "type": "string"
+                        },
+                        "timestampSource": {
+                            "type": "string"
+                        },
+                        "certificateVersion": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

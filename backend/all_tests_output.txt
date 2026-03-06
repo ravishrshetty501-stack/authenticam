@@ -1,0 +1,110 @@
+
+> authenticam-backend@2.0.0 test
+> jest --testPathPattern="tests/" --verbose
+
+PASS tests/merkle.test.js
+  Merkle Tree
+    ΓêÜ empty buffer returns a valid root (14 ms)
+    ΓêÜ single chunk produces correct leaf = root (1 ms)
+    ΓêÜ multiple chunks produce tree with correct leaf count (1 ms)
+    ΓêÜ same input produces same root (deterministic) (1 ms)
+    ΓêÜ single bit change produces different root
+    ΓêÜ getMerkleProof and verifyMerkleProof for first leaf (1 ms)
+    ΓêÜ getMerkleProof and verifyMerkleProof for last leaf
+    ΓêÜ tampered leaf fails proof verification (1 ms)
+    ΓêÜ verifyMerkleRoot returns match for original file (1 ms)
+    ΓêÜ verifyMerkleRoot detects tampered file
+    ΓêÜ throws on non-buffer input (13 ms)
+
+PASS tests/watermark.test.js
+  Fragile Watermark
+    ΓêÜ embedWatermark returns buffer of same length (13 ms)
+    ΓêÜ detectWatermark passes on original watermarked file (1 ms)
+    ΓêÜ detectWatermark fails when file is modified after watermarking (1 ms)
+    ΓêÜ detectWatermark fails when file is re-encoded (different bytes) (1 ms)
+    ΓêÜ small file returns sentinel hash
+    ΓêÜ returns NONE confidence when no watermarkHash provided (1 ms)
+    ΓêÜ different files produce different watermark hashes
+    ΓêÜ throws on non-buffer input (14 ms)
+
+  console.log
+    ≡ƒöæ RSA keys already exist
+
+      at log (utils/crypto.js:14:17)
+
+  console.log
+    ≡ƒöæ RSA keys already exist
+
+      at log (utils/crypto.js:14:17)
+
+  console.error
+    Error verifying signature: Encrypted message is invalid.
+
+    [0m [90m 72 |[39m         [36mreturn[39m publicKey[33m.[39mverify(md[33m.[39mdigest()[33m.[39mbytes()[33m,[39m forge[33m.[39mutil[33m.[39mdecode64(signature))[33m;[39m
+     [90m 73 |[39m     } [36mcatch[39m (err) {
+    [31m[1m>[22m[39m[90m 74 |[39m         console[33m.[39merror([32m'Error verifying signature:'[39m[33m,[39m err[33m.[39mmessage)[33m;[39m
+     [90m    |[39m                 [31m[1m^[22m[39m
+     [90m 75 |[39m         [36mreturn[39m [36mfalse[39m[33m;[39m
+     [90m 76 |[39m     }
+     [90m 77 |[39m }[0m
+
+      at error (utils/crypto.js:74:17)
+      at verifySignature (utils/verifier.js:92:23)
+      at checkFn (utils/verifier.js:40:30)
+      at runCheck (utils/verifier.js:87:34)
+      at Object.<anonymous> (tests/verifier.test.js:78:24)
+
+PASS tests/verifier.test.js
+  Verifier Pipeline
+    ΓêÜ Full 6-check verify of authentic recording (40 ms)
+    ΓêÜ Detects TAMPERED when hash mismatches (27 ms)
+    ΓêÜ Detects TAMPERED when signature is invalid (8 ms)
+    ΓêÜ Detects UNKNOWN_DEVICE when watermark is stripped (re-encoded) (27 ms)
+    ΓêÜ Gracefully handles missing fingerprint (legacy) (27 ms)
+
+  console.error
+    Error verifying signature: Encrypted message length is invalid.
+
+    [0m [90m 72 |[39m         [36mreturn[39m publicKey[33m.[39mverify(md[33m.[39mdigest()[33m.[39mbytes()[33m,[39m forge[33m.[39mutil[33m.[39mdecode64(signature))[33m;[39m
+     [90m 73 |[39m     } [36mcatch[39m (err) {
+    [31m[1m>[22m[39m[90m 74 |[39m         console[33m.[39merror([32m'Error verifying signature:'[39m[33m,[39m err[33m.[39mmessage)[33m;[39m
+     [90m    |[39m                 [31m[1m^[22m[39m
+     [90m 75 |[39m         [36mreturn[39m [36mfalse[39m[33m;[39m
+     [90m 76 |[39m     }
+     [90m 77 |[39m }[0m
+
+      at error (utils/crypto.js:74:17)
+      at Object.verifySignature (tests/crypto.test.js:65:31)
+
+FAIL tests/crypto.test.js
+  Crypto Utilities
+    ├ù computeBufferHash returns 64-char hex string (18 ms)
+    ΓêÜ computeBufferHash is deterministic
+    ΓêÜ different inputs produce different hashes
+    RSA Sign / Verify (requires keys on disk)
+      ΓêÜ signHash and verifySignature round-trip (980 ms)
+      ΓêÜ wrong hash fails signature verification (880 ms)
+      ΓêÜ corrupted signature fails verification (833 ms)
+
+  ΓùÅ Crypto Utilities ΓÇ║ computeBufferHash returns 64-char hex string
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "cf47ea88db3d32da0c9e19ce50017a2a4dd81a91ca8d0e8e3b90a99038c5b9a4"
+    Received: "30a6ac3a11f52840c00a789028e6d8f33fb5d985c828320432fcd8348b716966"
+
+      14 |         const hash = computeBufferHash(buf);
+      15 |         expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    > 16 |         expect(hash).toBe('cf47ea88db3d32da0c9e19ce50017a2a4dd81a91ca8d0e8e3b90a99038c5b9a4');
+         |                      ^
+      17 |     });
+      18 |
+      19 |     test('computeBufferHash is deterministic', () => {
+
+      at Object.toBe (tests/crypto.test.js:16:22)
+
+Test Suites: 1 failed, 3 passed, 4 total
+Tests:       1 failed, 29 passed, 30 total
+Snapshots:   0 total
+Time:        4.226 s
+Ran all test suites matching /tests\\/i.
