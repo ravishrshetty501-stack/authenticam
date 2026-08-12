@@ -27,7 +27,10 @@ async function initAI() {
         const aiModule = await import('ai');
         generateTextFn = aiModule.generateText;
         const openaiModule = await import('@ai-sdk/openai');
-        openaiProvider = openaiModule.openai;
+        openaiProvider = openaiModule.createOpenAI({
+            baseURL: 'https://openrouter.ai/api/v1',
+            apiKey: process.env.OPENAI_API_KEY
+        });
         console.log('[investigationAgent] AI SDK loaded successfully');
         return true;
     } catch (err) {
