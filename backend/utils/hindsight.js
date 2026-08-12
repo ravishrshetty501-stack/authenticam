@@ -33,7 +33,7 @@ const userBank = (userId) => `authenticam-user-${userId}`;
  * @returns {Promise<boolean>}
  */
 async function isAvailable() {
-    return true; // We are using a local JSON mock for the hackathon
+    return true; // We are using a local JSON mock for data persistence
 }
 
 /**

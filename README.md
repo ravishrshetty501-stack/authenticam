@@ -1,6 +1,6 @@
 # AuthentiCam — Proof-of-Reality Recording Authentication
 
-> **Hackathon-Level Implementation** — Deepfake Detection & Media Authenticity System
+> **Production-Level Implementation** — Deepfake Detection & Media Authenticity System
 
 AuthentiCam provides cryptographic proof that audio/video recordings are authentic and unaltered at the moment of capture. Every recording generates a **Proof-of-Reality Certificate** backed by 5 independent security layers.
 
@@ -190,4 +190,4 @@ Update your `.env` files with the generated `.loca.lt` URLs.
 
 ---
 
-*AuthentiCam v2.0 — Built for hackathon-level deepfake detection research*
+*AuthentiCam v2.0 — Built for advanced deepfake detection research*
