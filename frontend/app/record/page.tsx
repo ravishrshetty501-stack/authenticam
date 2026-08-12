@@ -185,13 +185,21 @@ export default function RecordPage() {
 
     const downloadVideo = () => {
         if (!blobRef.current) return;
-        const ext = blobRef.current.type.includes('mp4') ? 'mp4' : 'webm';
+        // Always download video as .mp4
+        const ext = 'mp4';
         const url = URL.createObjectURL(blobRef.current);
+
+        // Open in new tab so they can view it immediately
+        window.open(url, '_blank');
+
         const a = document.createElement('a');
         a.href = url;
         a.download = `recording-${Date.now()}.${ext}`;
         a.click();
-        URL.revokeObjectURL(url);
+
+        setTimeout(() => {
+            URL.revokeObjectURL(url);
+        }, 5000);
     };
 
     const handleDiscardRecording = () => {
@@ -236,6 +244,10 @@ export default function RecordPage() {
 
     const downloadPhoto = () => {
         if (!photoDataUrl) return;
+
+        // Open in new tab so they can view it immediately
+        window.open(photoDataUrl, '_blank');
+
         const a = document.createElement('a');
         a.href = photoDataUrl;
         a.download = `photo-${Date.now()}.jpg`;
@@ -366,11 +378,14 @@ export default function RecordPage() {
             console.log('[downloadAuthenticMedia] Received blob, size:', res.data.size);
 
             // Explicitly create blob with type from response if available
-            const blob = new Blob([res.data], { type: res.headers['content-type'] || 'video/mp4' });
+            const blob = new Blob([res.data], { type: res.headers['content-type'] || (certification.certificate.mimeType?.startsWith('image') ? 'image/jpeg' : 'video/mp4') });
             const url = URL.createObjectURL(blob);
 
-            const ext = certification.certificate.mimeType?.includes('jpeg') ? 'jpg' :
-                certification.certificate.mimeType?.includes('mp4') ? 'mp4' : 'webm';
+            const ext = certification.certificate.mimeType?.startsWith('image') ? 'jpg' :
+                certification.certificate.mimeType?.startsWith('video') ? 'mp4' : 'mp4';
+
+            // Open in new tab so they can view it immediately
+            window.open(url, '_blank');
 
             const a = document.createElement('a');
             a.href = url;
@@ -381,7 +396,9 @@ export default function RecordPage() {
             // Small delay before removal/revocation to ensure browser handles it
             setTimeout(() => {
                 document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+                setTimeout(() => {
+                    URL.revokeObjectURL(url);
+                }, 5000);
             }, 100);
 
             toast.success('Authentic media downloaded!');

@@ -60,6 +60,7 @@ export const recordingsAPI = {
 export const certificatesAPI = {
     get: (certId: string) => api.get(`/certificates/${certId}`),
     download: (certId: string) => api.get(`/certificates/${certId}/download`, { responseType: 'blob' }),
+    downloadMedia: (certId: string) => api.get(`/certificates/${certId}/media`, { responseType: 'blob' }),
     list: () => api.get('/certificates'),
     addCustody: (certId: string, event: string, details?: object) =>
         api.post(`/certificates/${certId}/custody`, { event, details }),
@@ -77,4 +78,19 @@ export const auditAPI = {
     getChain: () => api.get('/audit/chain'),
     verifyChain: () => api.get('/audit/chain/verify'),
     getCertificateAudit: (certId: string) => api.get(`/audit/certificate/${certId}`),
+};
+
+// Investigation API (AI Evidence Intelligence Agent)
+export const investigationAPI = {
+    investigate: (formData: FormData) =>
+        api.post('/investigate', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 120000, // AI analysis can take longer
+        }),
+    getCase: (caseId: string) => api.get(`/investigate/${caseId}`),
+    list: (page = 1, limit = 20) => api.get('/investigate', { params: { page, limit } }),
+    submitFeedback: (caseId: string, data: { decision: string; notes: string }) =>
+        api.post(`/investigate/${caseId}/feedback`, data),
+    getDeviceHistory: (fingerprint: string) => api.get(`/investigate/device/${fingerprint}`),
+    getStats: () => api.get('/investigate/stats'),
 };

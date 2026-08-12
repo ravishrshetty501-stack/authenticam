@@ -155,17 +155,28 @@ npm test              # runs all unit tests
 
 ---
 
-## Running Locally
-
 ```bash
 # Backend (Terminal 1)
 cd backend
-node server.js        # demo mode if MongoDB unavailable
+npm run dev           # runs with nodemon for auto-reload
 
 # Frontend (Terminal 2)
 cd frontend
-npm run dev
+npm run dev           # listens on 0.0.0.0
 ```
+
+## Mobile Access (HTTPS)
+
+Modern mobile browsers (Chrome, Safari, iOS) require **HTTPS** for camera access. For local development, use a secure tunnel:
+
+```bash
+# Secure the frontend (Port 3000)
+npx localtunnel --port 3000
+
+# Secure the backend (Port 5000)
+npx localtunnel --port 5000
+```
+Update your `.env` files with the generated `.loca.lt` URLs.
 
 ---
 

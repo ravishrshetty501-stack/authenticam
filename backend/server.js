@@ -18,8 +18,9 @@ app.use(cors({
         const allowed = [
             'http://localhost:3000',
             'https://localhost:3000',
+            'http://127.0.0.1:3000',
+            'https://127.0.0.1:3000',
             'http://172.18.28.186:3000',
-            'https://evil-chicken-retire.loca.lt',
             process.env.FRONTEND_URL,
         ].filter(Boolean);
         // Allow Vercel deployment URLs (*.vercel.app)
@@ -56,12 +57,14 @@ function setupRoutes() {
     const certificateRoutes = require('./routes/certificates');
     const verificationRoutes = require('./routes/verification');
     const auditRoutes = require('./routes/audit');
+    const investigationRoutes = require('./routes/investigation');
 
     app.use('/api/auth', authRoutes);
     app.use('/api/recordings', recordingRoutes);
     app.use('/api/certificates', certificateRoutes);
     app.use('/api/verify', verificationRoutes);
     app.use('/api/audit', auditRoutes);
+    app.use('/api/investigate', investigationRoutes);
 }
 
 function setupDemoRoutes() {
@@ -254,7 +257,8 @@ function setupDemoRoutes() {
         const rec = demoRecordings.get(req.params.id);
         if (!rec || !rec.watermarkedBuffer) return res.status(404).json({ error: 'File not found' });
 
-        const ext = rec.mimeType.includes('mp4') ? '.mp4' : rec.mimeType.includes('jpeg') ? '.jpg' : '.webm';
+        const ext = rec.mimeType?.startsWith('image') ? '.jpg' :
+                    rec.mimeType?.startsWith('video') ? '.mp4' : '.mp4';
         res.setHeader('Content-Type', rec.mimeType);
         res.setHeader('Content-Disposition', `attachment; filename="authentic-${rec.title.replace(/[^a-z0-9]/gi, '_')}${ext}"`);
         res.send(rec.watermarkedBuffer);
@@ -276,7 +280,20 @@ function setupDemoRoutes() {
         res.setHeader('Content-Disposition', `attachment; filename=certificate-${req.params.id}.json`);
         res.send(JSON.stringify(cert, null, 2));
     });
+    certRouter.get('/:id/media', (req, res) => {
+        const cert = demoCertificates.get(req.params.id);
+        if (!cert) return res.status(404).json({ error: 'Certificate not found' });
+        const rec = demoRecordings.get(cert.recordingId);
+        if (!rec || !rec.watermarkedBuffer) return res.status(404).json({ error: 'Media not found' });
+
+        const ext = rec.mimeType?.startsWith('image') ? '.jpg' :
+                    rec.mimeType?.startsWith('video') ? '.mp4' : '.mp4';
+        res.setHeader('Content-Type', rec.mimeType || 'application/octet-stream');
+        res.setHeader('Content-Disposition', `attachment; filename="authentic-${cert.certificateId}${ext}"`);
+        res.send(rec.watermarkedBuffer);
+    });
     app.use('/api/certificates', certRouter);
+
 
     // VERIFY — Full 5-check verifier (demo mode)
     const { verifyRecording } = require('./utils/verifier');
@@ -310,6 +327,10 @@ function setupDemoRoutes() {
     // AUDIT — chain-of-custody and blockchain ledger
     const auditRoutes = require('./routes/audit');
     app.use('/api/audit', auditRoutes);
+
+    // INVESTIGATION — AI Evidence Investigation Agent
+    const investigationRoutes = require('./routes/investigation');
+    app.use('/api/investigate', investigationRoutes);
 }
 
 // Try MongoDB connection; fall back to demo mode

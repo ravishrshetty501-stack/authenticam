@@ -77,6 +77,46 @@ export default function CertificatePage() {
         } catch { toast.error('Download failed'); }
     };
 
+    const handleDownloadMedia = async () => {
+        if (!cert) return;
+        const toastId = toast.loading('Preparing authentic media download...');
+        try {
+            const res = await certificatesAPI.downloadMedia(certId);
+            if (!res.data || res.status !== 200) {
+                throw new Error('Invalid server response');
+            }
+
+            const blob = new Blob([res.data], { type: res.headers['content-type'] || cert.mimeType || 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+
+            const ext = cert.mimeType?.startsWith('image') ? 'jpg' :
+                cert.mimeType?.startsWith('video') ? 'mp4' : 'mp4';
+
+            // Open the media file in a new tab so the user can view it immediately
+            window.open(url, '_blank');
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `authentic-${cert.certificateId}.${ext}`;
+            document.body.appendChild(a);
+            a.click();
+
+            setTimeout(() => {
+                document.body.removeChild(a);
+                // Keep URL alive slightly longer so the preview tab can load the blob
+                setTimeout(() => {
+                    URL.revokeObjectURL(url);
+                }, 5000);
+            }, 100);
+
+            toast.success('Media downloaded successfully!', { id: toastId });
+        } catch (err: any) {
+            console.error('[handleDownloadMedia] Error:', err);
+            toast.error('Failed to download authentic media file', { id: toastId });
+        }
+    };
+
+
     if (loading) {
         return (
             <div className="page-content" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh', position: 'relative', zIndex: 1 }}>
@@ -114,6 +154,15 @@ export default function CertificatePage() {
                             <p className="section-subtitle">{cert.recordingId?.title || 'Media Recording'}</p>
                         </div>
                         <div style={{ display: 'flex', gap: '10px' }}>
+                            {cert.recordingId && (
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={handleDownloadMedia}
+                                    style={{ background: 'var(--success)', borderColor: 'var(--success)' }}
+                                >
+                                    📥 Download {cert.mimeType?.startsWith('image') ? 'Photo' : cert.mimeType?.startsWith('video') ? 'Video' : 'Media'}
+                                </button>
+                            )}
                             <button className="btn btn-primary" onClick={handleDownload}>📥 Download JSON</button>
                             <Link href="/verify"><button className="btn btn-secondary">🔍 Verify Now</button></Link>
                         </div>

@@ -31,3 +31,10 @@ Thumbs.db
 
 # Next.js cache
 .next/cache/
+*.txt
+backend/hindsight_memory.json
+backend/*.txt
+frontend/*.txt
+presentation_guide.md
+technical_summary.md
+overview

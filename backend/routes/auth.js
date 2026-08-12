@@ -59,7 +59,7 @@ router.post('/face-login', async (req, res) => {
             return res.status(400).json({ error: 'A valid 128-dimension face descriptor is required' });
         }
 
-        const THRESHOLD = 0.55; // Euclidean distance: 0 = identical, >0.6 = different person
+        const THRESHOLD = 0.6; // Euclidean distance: 0 = identical, >0.6 = different person
         let matchedUser = null;
 
         if (email) {

@@ -10,6 +10,9 @@
         "verify": "node cli/verify.js"
     },
     "dependencies": {
+        "@ai-sdk/openai": "^4.0.40",
+        "ai": "^7.0.62",
+        "axios": "^1.19.0",
         "bcryptjs": "^2.4.3",
         "cors": "^2.8.5",
         "crypto": "^1.0.1",

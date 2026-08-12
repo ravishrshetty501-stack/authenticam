@@ -180,7 +180,8 @@ router.get('/:id/download', authMiddleware, async (req, res) => {
             return res.status(404).json({ error: 'Recording file not found on disk' });
         }
 
-        const ext = path.extname(filePath);
+        const ext = recording.mimeType?.startsWith('image') ? '.jpg' :
+                    recording.mimeType?.startsWith('video') ? '.mp4' : path.extname(filePath) || '.mp4';
         res.setHeader('Content-Type', recording.mimeType || 'application/octet-stream');
         res.setHeader('Content-Disposition', `attachment; filename="authentic-${recording.title.replace(/[^a-z0-9]/gi, '_')}${ext}"`);
 

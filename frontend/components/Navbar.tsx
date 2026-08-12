@@ -24,6 +24,7 @@ export default function Navbar() {
             { href: '/dashboard', label: 'Dashboard' },
             { href: '/record', label: 'Record' },
             { href: '/verify', label: 'Verify' },
+            { href: '/investigate', label: '🧠 Investigate' },
         ]
         : [
             { href: '/verify', label: 'Verify' },
